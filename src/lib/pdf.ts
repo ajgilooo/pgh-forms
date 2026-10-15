@@ -92,6 +92,7 @@ export function wrapText(
   }
   return lines;
 }
+const supportedCharacters = new WeakMap<PDFFont, Set<number>>();
 export function overflowReason(
   field: FieldMapping,
   value: string | boolean,
@@ -101,6 +102,16 @@ export function overflowReason(
   const text = String(value),
     width = field.width - 4,
     height = field.height - 3;
+  let characters = supportedCharacters.get(font);
+  if (!characters) {
+    characters = new Set(font.getCharacterSet());
+    supportedCharacters.set(font, characters);
+  }
+  const missing = [...text].find(
+    (char) => !/\s/.test(char) && !characters.has(char.codePointAt(0)!),
+  );
+  if (missing)
+    return `The character “${missing}” is not supported by the PDF font. Replace it with plain text before exporting.`;
   if (field.kind !== "multiline") {
     if (
       text.includes("\n") ||
@@ -345,7 +356,7 @@ export async function importBackground(
           y: pages[pageIndex].getHeight() - r.y - r.height,
           width: r.width,
           height: r.height,
-          fontSize: 9,
+          fontSize: Math.max(4, Math.min(9, Math.floor((r.height - 3) / 0.95))),
           kind:
             field instanceof PDFCheckBox
               ? "checkbox"

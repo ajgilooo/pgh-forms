@@ -136,6 +136,13 @@ describe("generated PDFs", () => {
     const doc = await PDFDocument.load(result.bytes);
     expect(doc.getForm().getTextField("request1.last").getText()).toBe("PEÑA");
   });
+  it("reports unsupported symbols instead of silently losing clinical text", async () => {
+    const context = ctx();
+    context.patient = { ...patient, diagnosis: "Synthetic 🧪 symbol" };
+    await expect(
+      generatePdf([{ template: builtInTemplates[0], context }], true, options),
+    ).rejects.toThrow("not supported by the PDF font");
+  });
 });
 describe("blank template imports", () => {
   it("imports fields and multiple pages while removing pre-existing values", async () => {

@@ -1498,6 +1498,11 @@ export default function App() {
                                                 />
                                               ) : (
                                                 <input
+                                                  type={
+                                                    f.kind === "datetime"
+                                                      ? "datetime-local"
+                                                      : "text"
+                                                  }
                                                   value={String(
                                                     custom[r.id]?.[f.id] ?? "",
                                                   )}
