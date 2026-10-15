@@ -133,6 +133,8 @@ export interface RequestGroup {
   containerIds: string[];
   templateId: string;
   issues: string[];
+  standalone?: boolean;
+  displayName?: string;
 }
 export interface LabelOutput {
   groupId: string;
@@ -159,6 +161,23 @@ export interface FieldMapping {
   kind: FieldKind;
   binding: string;
   nativeName?: string;
+  group?: string;
+  valueKey?: string;
+  inputType?: "date" | "time";
+  format?:
+    | "date-month"
+    | "date-day"
+    | "date-year"
+    | "date-full"
+    | "time-hour"
+    | "time-minute"
+    | "time-am"
+    | "time-pm";
+  characterIndex?: number;
+  characterCount?: number;
+  cells?: number;
+  uppercase?: boolean;
+  exclusiveGroup?: string;
 }
 export interface FormTemplate {
   id: string;
@@ -170,6 +189,8 @@ export interface FormTemplate {
   fields: FieldMapping[];
   builtIn?: boolean;
   fourUp?: boolean;
+  sourceUrl?: string;
+  revision?: string;
 }
 export interface GenerationContext {
   patient: Patient;

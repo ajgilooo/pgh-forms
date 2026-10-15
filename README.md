@@ -13,6 +13,10 @@ A browser-only workspace for filling PGH forms, grouping lab orders into physica
 
 Central Lab requests print four per A4 sheet. The supplied two-page Surgical Pathology form keeps its original layout. Other destinations require a blank template uploaded and mapped in Template studio.
 
+**PhilHealth CF-2:** Use **Add CF-2** on Patient details or Forms & labels. It works without lab orders or a hospital case number. Patient names carry over in capitals; expand the grouped sections to enter confinement, diagnoses, procedures, professional and billing information. Add another CF-2 when needed. Both printable and editable downloads preserve the official two-page 8.5 × 13 inch layout. Certification choices, consent details, charges and dates remain blank until entered; sign separately.
+
+The built-in CF-2 is the [September 2018 revision currently linked by PhilHealth](https://www.philhealth.gov.ph/downloads/claim/ClaimForm2_092018.pdf). Its field mapping can be rebuilt with `python3 scripts/build-cf2-fields.py`.
+
 ## Data handling
 
 - Patient details, orders, collection information, PDF previews, and extra clinical fields exist only in React memory. Refreshing or clearing removes them.

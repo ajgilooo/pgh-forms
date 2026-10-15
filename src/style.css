@@ -2808,6 +2808,87 @@ label small {
 .mobile-tools {
   display: none;
 }
+.additional-forms-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+  background: #fafcf5;
+}
+.additional-forms-card > div {
+  flex: 1;
+}
+.additional-forms-card h2 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.additional-forms-card p {
+  font-size: 10px;
+  line-height: 1.8;
+  color: #8b9585;
+  margin-top: 5px;
+}
+.form-field-sections > details {
+  margin: 0 0 12px;
+  border: 1px solid #e1e8d7;
+  border-radius: 6px;
+  background: #fff;
+  padding: 14px;
+}
+.form-field-sections summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 550;
+  color: #617b51;
+  cursor: pointer;
+  line-height: 1.7;
+}
+.form-field-sections summary span {
+  font-size: 9px;
+  font-weight: 400;
+  color: #9aa58e;
+  white-space: nowrap;
+}
+.form-field-sections details > .form-grid {
+  margin-top: 22px;
+}
+.form-source {
+  font-size: 10px;
+  color: #879577;
+  line-height: 1.9;
+  margin-bottom: 20px;
+}
+.form-source a {
+  color: #668450;
+  text-underline-offset: 3px;
+}
+.cf2-help > p {
+  font-size: 11px;
+  color: #879577;
+  line-height: 1.9;
+  margin: 15px 0;
+}
+@media (max-width: 600px) {
+  .additional-forms-card {
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+  .additional-forms-card > div {
+    min-width: 190px;
+  }
+  .additional-forms-card > .button {
+    margin-left: 48px;
+  }
+  .form-field-sections > details {
+    padding: 12px;
+  }
+  .form-field-sections summary {
+    font-size: 10px;
+  }
+}
 @media (max-width: 600px) {
   .mobile-tools {
     display: inline-flex;

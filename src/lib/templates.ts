@@ -1,4 +1,5 @@
 import fields from "../data/pathology-fields.json";
+import cf2Fields from "../data/cf2-fields.json";
 import type { FieldMapping, FormTemplate } from "./types";
 const f = (
   id: string,
@@ -159,6 +160,21 @@ export const builtInTemplates: FormTemplate[] = [
       { width: 595.32, height: 841.92 },
     ],
     fields: fields as FieldMapping[],
+  },
+  {
+    id: "philhealth-cf2",
+    name: "PhilHealth · CF-2 Claim Form 2",
+    fileType: "pdf",
+    assetUrl: "forms/philhealth-cf2.pdf",
+    builtIn: true,
+    pageSizes: [
+      { width: 612, height: 936 },
+      { width: 612, height: 936 },
+    ],
+    fields: cf2Fields as FieldMapping[],
+    sourceUrl:
+      "https://www.philhealth.gov.ph/downloads/claim/ClaimForm2_092018.pdf",
+    revision: "September 2018",
   },
 ];
 

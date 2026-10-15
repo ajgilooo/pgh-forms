@@ -61,6 +61,12 @@ import {
 import { TemplateEditor } from "./components/TemplateEditor";
 import { CatalogEditor } from "./components/CatalogEditor";
 import { PdfPreview } from "./components/PdfPreview";
+import { FormFields } from "./components/FormFields";
+import {
+  standaloneRequest,
+  requestTitle,
+  exportPatientIssue,
+} from "./lib/form-requests";
 
 const steps = [
   {
@@ -133,6 +139,7 @@ export default function App() {
   const [patient, setPatient] = useState<Patient>({ ...emptyPatient }),
     [orders, setOrders] = useState<Order[]>([]),
     [step, setStep] = useState(0);
+  const [additionalForms, setAdditionalForms] = useState<RequestGroup[]>([]);
   const [search, setSearch] = useState(""),
     [labFilter, setLabFilter] = useState("all"),
     [paste, setPaste] = useState(""),
@@ -183,7 +190,8 @@ export default function App() {
             ].some((a) => t.aliases.includes(a)) && t.lab === "Central Lab",
         )
   ).slice(0, 50);
-  const selectedRequests = grouped.requests.filter(
+  const allRequests = [...grouped.requests, ...additionalForms];
+  const selectedRequests = allRequests.filter(
     (r) => r.templateId && !excluded.includes(r.id),
   );
   const missingTemplates = grouped.requests.filter(
@@ -201,7 +209,15 @@ export default function App() {
     generation.current++;
     setPreview(null);
     setError("");
-  }, [patient, orders, catalog, custom, excluded, customTemplates]);
+  }, [
+    patient,
+    orders,
+    catalog,
+    custom,
+    excluded,
+    customTemplates,
+    additionalForms,
+  ]);
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -271,10 +287,28 @@ export default function App() {
     setStep(n);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  function addCF2() {
+    const template = builtInTemplates.find((t) => t.id === "philhealth-cf2")!;
+    const request = standaloneRequest(template, `form-${crypto.randomUUID()}`);
+    setAdditionalForms((current) => [...current, request]);
+    setExpanded((current) => [...current, request.id]);
+    go(3);
+  }
+  function removeForm(id: string) {
+    setAdditionalForms((current) => current.filter((form) => form.id !== id));
+    setCustom((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setExcluded((current) => current.filter((value) => value !== id));
+    setExpanded((current) => current.filter((value) => value !== id));
+  }
   function clearPatient() {
     generation.current++;
     setPatient({ ...emptyPatient });
     setOrders([]);
+    setAdditionalForms([]);
     setPaste("");
     setSearch("");
     setPending([]);
@@ -284,7 +318,7 @@ export default function App() {
     setExpanded([]);
     setPreview(null);
     setClipboardFallback("");
-    setStep(0);
+    go(0);
     setError("");
     setToast("Patient details and orders cleared.");
   }
@@ -321,17 +355,12 @@ export default function App() {
   }
   async function pdf(editable: boolean, download: boolean) {
     setError("");
-    if (
-      !patient.lastName.trim() ||
-      !patient.firstName.trim() ||
-      !patient.caseNumber.trim()
-    ) {
-      setError(
-        "Enter the patient’s last name, first name, and case number before generating forms.",
-      );
+    const patientIssue = exportPatientIssue(selectedRequests, patient);
+    if (patientIssue) {
+      setError(patientIssue);
       return;
     }
-    if (pending.length) {
+    if (pending.length && selectedRequests.some((r) => !r.standalone)) {
       setError(
         "Resolve or explicitly remove unmatched pasted entries in Choose tests.",
       );
@@ -360,7 +389,7 @@ export default function App() {
       if (download)
         downloadBytes(
           result.bytes,
-          `pgh-requests-${editable ? "editable" : "print"}.pdf`,
+          `${selectedRequests.every((r) => r.templateId === "philhealth-cf2") ? "philhealth-cf2" : "pgh-requests"}-${editable ? "editable" : "print"}.pdf`,
           "application/pdf",
         );
       setToast(
@@ -523,7 +552,9 @@ export default function App() {
                     "Enter the details once. We’ll carry them through your requests and labels.",
                     "Paste your orders or find tests in the catalog. We’ll sort out the paperwork.",
                     "Review the containers and requests before you generate your forms.",
-                    "Download your requests and copy your tube labels into Niimbot.",
+                    additionalForms.length && !orders.length
+                      ? "Fill your claim form and download a printable or editable PDF."
+                      : "Download your requests and copy your tube labels into Niimbot.",
                   ][step]
                 }
               </p>
@@ -533,17 +564,20 @@ export default function App() {
               Session only
             </span>
           </div>
-          {patient.caseNumber && step > 0 && (
-            <div className="patient-strip">
-              <span className="patient-avatar">
-                <UsersRound size={18} />
-              </span>
-              <strong>{fullName(patient) || "Patient"}</strong>
-              <span className="case-badge">{patient.caseNumber}</span>
-              {patient.ward && <span>{patient.ward}</span>}
-              <button onClick={() => go(0)}>Edit details</button>
-            </div>
-          )}
+          {(patient.caseNumber || patient.lastName || patient.firstName) &&
+            step > 0 && (
+              <div className="patient-strip">
+                <span className="patient-avatar">
+                  <UsersRound size={18} />
+                </span>
+                <strong>{fullName(patient) || "Patient"}</strong>
+                {patient.caseNumber && (
+                  <span className="case-badge">{patient.caseNumber}</span>
+                )}
+                {patient.ward && <span>{patient.ward}</span>}
+                <button onClick={() => go(0)}>Edit details</button>
+              </div>
+            )}
           {error && (
             <div className="error-banner" role="alert">
               <CircleAlert size={18} />
@@ -552,6 +586,23 @@ export default function App() {
                 <X size={16} />
               </button>
             </div>
+          )}
+          {(step === 0 || step === 3) && (
+            <section className="card additional-forms-card">
+              <span className="card-icon">
+                <FileText size={20} />
+              </span>
+              <div>
+                <h2>PhilHealth CF-2</h2>
+                <p>
+                  Fill the official two-page Claim Form 2. No lab orders needed.
+                </p>
+              </div>
+              <button className="button secondary" onClick={addCF2}>
+                <Plus size={16} />
+                {additionalForms.length ? "Add another CF-2" : "Add CF-2"}
+              </button>
+            </section>
           )}
           {step === 0 && (
             <div className="patient-layout">
@@ -565,7 +616,9 @@ export default function App() {
                       <h2>Patient information</h2>
                       <p>The essentials that go on every request.</p>
                     </div>
-                    <span className="required-hint">* For PDF export</span>
+                    <span className="required-hint">
+                      * For PDF export · Case number for lab forms only
+                    </span>
                   </div>
                   <div className="form-grid three">
                     {patientInput(
@@ -1362,7 +1415,7 @@ export default function App() {
           )}
           {step === 3 && (
             <>
-              {!orders.length ? (
+              {!allRequests.length ? (
                 <EmptyOrders onClick={() => go(1)} />
               ) : (
                 <div className="output-layout">
@@ -1373,7 +1426,7 @@ export default function App() {
                           <FileCheck2 size={20} />
                         </span>
                         <div>
-                          <h2>Your request forms</h2>
+                          <h2>Your forms</h2>
                           <p>
                             Print-ready or editable. Always preview before
                             printing.
@@ -1383,7 +1436,7 @@ export default function App() {
                           {selectedRequests.length} selected
                         </span>
                       </div>
-                      {grouped.requests.map((r, i) => {
+                      {allRequests.map((r, i) => {
                         const t = templates.find((t) => t.id === r.templateId);
                         const isExpanded = expanded.includes(r.id);
                         return (
@@ -1403,9 +1456,7 @@ export default function App() {
                                 }
                               />
                               <div>
-                                <strong>
-                                  {r.orders.map((o) => o.test.name).join(", ")}
-                                </strong>
+                                <strong>{requestTitle(r)}</strong>
                                 <span>
                                   {t
                                     ? t.name
@@ -1430,99 +1481,46 @@ export default function App() {
                                   <ChevronDown size={13} />
                                 </button>
                               )}
+                              {r.standalone && (
+                                <button
+                                  className="icon-button danger"
+                                  aria-label={`Remove CF-2 form ${i + 1}`}
+                                  onClick={() => removeForm(r.id)}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
                             </div>
                             {t && isExpanded && (
                               <div className="manual-fields">
                                 <p className="subtle">
-                                  Patient and order fields fill automatically.
-                                  Enter only the extra details needed for this
-                                  form. Leave receiving-lab and signature areas
-                                  blank unless appropriate.
+                                  Patient details fill automatically. Enter the
+                                  remaining fields below. Signatures are
+                                  completed separately.
                                 </p>
-                                {t.fields.filter((f) => f.binding === "manual")
-                                  .length === 0 ? (
-                                  <p className="subtle">
-                                    This template uses patient and order details
-                                    only. Edit them in the earlier steps.
+                                {t.sourceUrl && (
+                                  <p className="form-source">
+                                    <a
+                                      href={t.sourceUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Official CF-2 · revised {t.revision}
+                                    </a>{" "}
+                                    · Original 8.5 × 13 inch layout. Printed
+                                    names only; sign separately.
                                   </p>
-                                ) : (
-                                  <div className="form-grid two">
-                                    {t.fields
-                                      .filter((f) => f.binding === "manual")
-                                      .map((f) => (
-                                        <label
-                                          className={
-                                            f.kind === "multiline"
-                                              ? "span-two"
-                                              : ""
-                                          }
-                                          key={f.id}
-                                        >
-                                          {f.kind === "checkbox" ? (
-                                            <span className="inline-check">
-                                              <input
-                                                type="checkbox"
-                                                checked={
-                                                  custom[r.id]?.[f.id] === true
-                                                }
-                                                onChange={(e) =>
-                                                  setCustom((c) => ({
-                                                    ...c,
-                                                    [r.id]: {
-                                                      ...c[r.id],
-                                                      [f.id]: e.target.checked,
-                                                    },
-                                                  }))
-                                                }
-                                              />
-                                              {f.name}
-                                            </span>
-                                          ) : (
-                                            <>
-                                              {f.name}
-                                              {f.kind === "multiline" ? (
-                                                <textarea
-                                                  rows={3}
-                                                  value={String(
-                                                    custom[r.id]?.[f.id] ?? "",
-                                                  )}
-                                                  onChange={(e) =>
-                                                    setCustom((c) => ({
-                                                      ...c,
-                                                      [r.id]: {
-                                                        ...c[r.id],
-                                                        [f.id]: e.target.value,
-                                                      },
-                                                    }))
-                                                  }
-                                                />
-                                              ) : (
-                                                <input
-                                                  type={
-                                                    f.kind === "datetime"
-                                                      ? "datetime-local"
-                                                      : "text"
-                                                  }
-                                                  value={String(
-                                                    custom[r.id]?.[f.id] ?? "",
-                                                  )}
-                                                  onChange={(e) =>
-                                                    setCustom((c) => ({
-                                                      ...c,
-                                                      [r.id]: {
-                                                        ...c[r.id],
-                                                        [f.id]: e.target.value,
-                                                      },
-                                                    }))
-                                                  }
-                                                />
-                                              )}
-                                            </>
-                                          )}
-                                        </label>
-                                      ))}
-                                  </div>
                                 )}
+                                <FormFields
+                                  template={t}
+                                  values={custom[r.id] ?? {}}
+                                  onChange={(values) =>
+                                    setCustom((current) => ({
+                                      ...current,
+                                      [r.id]: values,
+                                    }))
+                                  }
+                                />
                               </div>
                             )}
                           </div>
@@ -1575,133 +1573,165 @@ export default function App() {
                     )}
                   </div>
                   <aside className="labels-column">
-                    <section className="card labels-card">
-                      <div className="card-heading">
-                        <span className="card-icon">
-                          <Copy size={19} />
-                        </span>
-                        <div>
-                          <h2>Tube labels</h2>
-                          <p>Four lines. Ready for Niimbot.</p>
+                    {!labels.length && (
+                      <section className="card cf2-help">
+                        <div className="card-heading">
+                          <span className="card-icon">
+                            <FileText size={19} />
+                          </span>
+                          <div>
+                            <h2>Claim form workspace</h2>
+                            <p>CF-2 works without lab requests.</p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="form-grid two">
-                        {patientInput(
-                          "collectedDate",
-                          "Collection date",
-                          "date",
-                        )}
-                        {patientInput(
-                          "collectedTime",
-                          "Collection time",
-                          "time",
-                        )}
-                      </div>
-                      {patientInput(
-                        "collectedBy",
-                        "Collected by",
-                        "text",
-                        "Leave blank until collected",
-                      )}
-                      <div className="label-example">
-                        <span className="eyebrow">LABEL TEXT</span>
-                        <pre>
-                          {fullName(patient) || "NAME"}
-                          {"\n"}
-                          {patient.caseNumber || "CASE NUMBER"}
-                          {"\n"}
-                          {[patient.collectedDate, patient.collectedTime]
-                            .filter(Boolean)
-                            .join(" ") || "DATE TIME"}
-                          {"\n"}COLLECTED BY: {patient.collectedBy}
-                        </pre>
-                      </div>
-                      {!labelReady && (
-                        <p className="label-warning">
-                          Enter patient name and case number, and resolve
-                          collection requirements before copying labels.
+                        <p>
+                          Patient names fill from Patient details. Open each
+                          section to enter the remaining claim information.
                         </p>
-                      )}
-                      <div className="label-groups">
-                        {labels.map((l, i) => (
-                          <div className="label-group" key={l.groupId}>
-                            <div>
-                              <Tube color={l.container} />
+                        <p>
+                          Certification choices, charges, codes and dates stay
+                          blank until you enter them. Signatures are completed
+                          separately.
+                        </p>
+                        <p>
+                          The PDF keeps PhilHealth’s original 8.5 × 13 inch
+                          paper size.
+                        </p>
+                      </section>
+                    )}
+                    {labels.length > 0 && (
+                      <section className="card labels-card">
+                        <div className="card-heading">
+                          <span className="card-icon">
+                            <Copy size={19} />
+                          </span>
+                          <div>
+                            <h2>Tube labels</h2>
+                            <p>Four lines. Ready for Niimbot.</p>
+                          </div>
+                        </div>
+                        <div className="form-grid two">
+                          {patientInput(
+                            "collectedDate",
+                            "Collection date",
+                            "date",
+                          )}
+                          {patientInput(
+                            "collectedTime",
+                            "Collection time",
+                            "time",
+                          )}
+                        </div>
+                        {patientInput(
+                          "collectedBy",
+                          "Collected by",
+                          "text",
+                          "Leave blank until collected",
+                        )}
+                        <div className="label-example">
+                          <span className="eyebrow">LABEL TEXT</span>
+                          <pre>
+                            {fullName(patient) || "NAME"}
+                            {"\n"}
+                            {patient.caseNumber || "CASE NUMBER"}
+                            {"\n"}
+                            {[patient.collectedDate, patient.collectedTime]
+                              .filter(Boolean)
+                              .join(" ") || "DATE TIME"}
+                            {"\n"}COLLECTED BY: {patient.collectedBy}
+                          </pre>
+                        </div>
+                        {!labelReady && (
+                          <p className="label-warning">
+                            Enter patient name and case number, and resolve
+                            collection requirements before copying labels.
+                          </p>
+                        )}
+                        <div className="label-groups">
+                          {labels.map((l, i) => (
+                            <div className="label-group" key={l.groupId}>
                               <div>
-                                <strong>{containerNames[l.container]}</strong>
-                                <span>{l.destination}</span>
+                                <Tube color={l.container} />
+                                <div>
+                                  <strong>{containerNames[l.container]}</strong>
+                                  <span>{l.destination}</span>
+                                </div>
+                              </div>
+                              <div className="label-controls">
+                                <label>
+                                  Count
+                                  <input
+                                    aria-label={`Label count for container ${i + 1}`}
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={l.count}
+                                    onChange={(e) =>
+                                      setLabelCounts((c) => ({
+                                        ...c,
+                                        [l.groupId]: Math.max(
+                                          0,
+                                          Math.min(
+                                            100,
+                                            Math.floor(+e.target.value),
+                                          ),
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  className="small-button"
+                                  disabled={!labelReady || !l.count}
+                                  onClick={() =>
+                                    void copy(
+                                      Array.from(
+                                        { length: l.count },
+                                        () => l.text,
+                                      ).join("\n\n"),
+                                    )
+                                  }
+                                >
+                                  <Copy size={14} />
+                                  Copy label{l.count > 1 ? "s" : ""}
+                                </button>
                               </div>
                             </div>
-                            <div className="label-controls">
-                              <label>
-                                Count
-                                <input
-                                  aria-label={`Label count for container ${i + 1}`}
-                                  type="number"
-                                  min={0}
-                                  max={100}
-                                  value={l.count}
-                                  onChange={(e) =>
-                                    setLabelCounts((c) => ({
-                                      ...c,
-                                      [l.groupId]: Math.max(
-                                        0,
-                                        Math.min(
-                                          100,
-                                          Math.floor(+e.target.value),
-                                        ),
-                                      ),
-                                    }))
-                                  }
-                                />
-                              </label>
-                              <button
-                                className="small-button"
-                                disabled={!labelReady || !l.count}
-                                onClick={() =>
-                                  void copy(
-                                    Array.from(
-                                      { length: l.count },
-                                      () => l.text,
-                                    ).join("\n\n"),
-                                  )
-                                }
-                              >
-                                <Copy size={14} />
-                                Copy label{l.count > 1 ? "s" : ""}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <button
-                        className="button full"
-                        disabled={
-                          !labelReady || !labels.some((l) => l.count > 0)
-                        }
-                        onClick={() => void copy(allLabelText(labels))}
-                      >
-                        <Copy size={16} />
-                        Copy all labels
-                        <span className="button-count">
-                          {labels.reduce((n, l) => n + l.count, 0)}
-                        </span>
-                      </button>
-                    </section>
+                          ))}
+                        </div>
+                        <button
+                          className="button full"
+                          disabled={
+                            !labelReady || !labels.some((l) => l.count > 0)
+                          }
+                          onClick={() => void copy(allLabelText(labels))}
+                        >
+                          <Copy size={16} />
+                          Copy all labels
+                          <span className="button-count">
+                            {labels.reduce((n, l) => n + l.count, 0)}
+                          </span>
+                        </button>
+                      </section>
+                    )}
                     <div className="tip-card">
                       <ShieldCheck size={18} />
                       <p>
-                        Collection time stays blank until you enter it. Your
-                        downloaded PDFs and copied labels are yours to handle.
+                        {labels.length
+                          ? "Collection time stays blank until you enter it. Your downloaded PDFs and copied labels are yours to handle."
+                          : "Claim details stay in this session. Download your completed form before refreshing or clearing the patient."}
                       </p>
                     </div>
                   </aside>
                 </div>
               )}
               <div className="step-footer">
-                <button className="text-button" onClick={() => go(2)}>
+                <button
+                  className="text-button"
+                  onClick={() => go(orders.length ? 2 : 0)}
+                >
                   <ArrowLeft size={16} />
-                  Review groups
+                  {orders.length ? "Review groups" : "Patient details"}
                 </button>
                 <button className="text-button" onClick={clearPatient}>
                   Start a new patient

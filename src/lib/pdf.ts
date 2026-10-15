@@ -14,12 +14,15 @@ import type { FieldMapping, FormTemplate, GenerationContext } from "./types";
 import { fullName } from "./engine";
 import { templateBytes, assetUrl, toDataUrl } from "./templates";
 
-export function bindingValue(
+function rawBindingValue(
   field: FieldMapping,
   ctx: GenerationContext,
 ): string | boolean {
   if (field.binding === "manual")
-    return ctx.custom[field.id] ?? (field.kind === "checkbox" ? false : "");
+    return (
+      ctx.custom[field.valueKey ?? field.id] ??
+      (field.kind === "checkbox" ? false : "")
+    );
   if (field.binding === "patient.fullName") return fullName(ctx.patient);
   if (field.binding.startsWith("patient."))
     return String(
@@ -54,6 +57,54 @@ export function bindingValue(
       field.binding.replace("request.", "") as keyof typeof ctx.request
     ] ?? "",
   );
+}
+export function bindingValue(
+  field: FieldMapping,
+  ctx: GenerationContext,
+): string | boolean {
+  const raw = rawBindingValue(field, ctx);
+  if (field.format) {
+    if (!raw) return field.kind === "checkbox" ? false : "";
+    const value = String(raw);
+    if (field.format.startsWith("date-")) {
+      const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (
+        !parts ||
+        Number(parts[2]) < 1 ||
+        Number(parts[2]) > 12 ||
+        Number(parts[3]) < 1 ||
+        Number(parts[3]) >
+          new Date(Date.UTC(Number(parts[1]), Number(parts[2]), 0)).getUTCDate()
+      )
+        throw new Error(`${field.name}: enter a valid calendar date.`);
+      if (field.format === "date-full")
+        return `${parts[2]}-${parts[3]}-${parts[1]}`;
+      return parts[
+        field.format === "date-year" ? 1 : field.format === "date-month" ? 2 : 3
+      ];
+    }
+    const parts = /^(\d{2}):(\d{2})$/.exec(value);
+    if (!parts || Number(parts[1]) > 23 || Number(parts[2]) > 59)
+      throw new Error(`${field.name}: enter a valid time.`);
+    const hour = Number(parts[1]);
+    if (field.format === "time-am") return hour < 12;
+    if (field.format === "time-pm") return hour >= 12;
+    return field.format === "time-hour"
+      ? String(hour % 12 || 12).padStart(2, "0")
+      : parts[2];
+  }
+  if (field.characterIndex !== undefined) {
+    const value = String(raw).replace(/[\s-]/g, "").toUpperCase();
+    if (
+      field.characterCount !== undefined &&
+      value.length > field.characterCount
+    )
+      throw new Error(
+        `${field.name}: the form has only ${field.characterCount} character boxes.`,
+      );
+    return value[field.characterIndex] ?? "";
+  }
+  return typeof raw === "string" && field.uppercase ? raw.toUpperCase() : raw;
 }
 export function wrapText(
   text: string,
@@ -188,8 +239,17 @@ export async function generatePdf(
   }
   for (let i = 0; i < items.length; i++) {
     const { template, context } = items[i];
+    const checkedGroups = new Set<string>();
     for (const field of template.fields) {
-      const reason = overflowReason(field, bindingValue(field, context), font);
+      const value = bindingValue(field, context);
+      if (field.exclusiveGroup && value === true) {
+        if (checkedGroups.has(field.exclusiveGroup))
+          throw new Error(
+            `${template.name}: choose only one option for ${field.exclusiveGroup}.`,
+          );
+        checkedGroups.add(field.exclusiveGroup);
+      }
+      const reason = overflowReason(field, value, font);
       if (reason)
         throw new Error(`${template.name} · ${field.name}: ${reason}`);
     }
@@ -258,6 +318,10 @@ export async function generatePdf(
         } else {
           const text = form.createTextField(name);
           if (field.kind === "multiline") text.enableMultiline();
+          if (field.cells) {
+            text.setMaxLength(field.cells);
+            text.enableCombing();
+          }
           text.addToPage(page, {
             ...rect,
             font,
@@ -286,7 +350,7 @@ export async function generatePdf(
     for (const page of doc.getPages()) page.node.delete(PDFName.of("Annots"));
     doc.catalog.delete(PDFName.of("AcroForm"));
   }
-  doc.setTitle("PGH Forms · Laboratory requests");
+  doc.setTitle("PGH Forms · Patient forms");
   doc.setProducer("PGH Forms — local browser generation");
   doc.setAuthor("");
   doc.setSubject("");
